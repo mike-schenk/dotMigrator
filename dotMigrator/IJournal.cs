@@ -15,6 +15,11 @@ namespace dotMigrator
 		void SetBaseline(string lastMigrationToBaseline, IMigrationsProvider migrationsProvider);
 
 
+		/// <summary>
+		/// Insert or update the migration identified by its name.
+		/// It will be recorded as an incomplete migration.
+		/// </summary>
+		/// <param name="migrationToRun"></param>
 		void RecordStartMigration(Migration migrationToRun);
 		void RecordCompleteMigration(Migration migrationToRun);
 		void RecordStoredCodeDefinition(StoredCodeDefinition storedCodeDefinition, int lastMigrationNumber);

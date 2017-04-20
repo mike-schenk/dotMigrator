@@ -9,17 +9,20 @@ namespace dotMigrator
 		private readonly IJournal _journal;
 		private readonly IMigrationsProvider _migrationsProvider;
 		private readonly IProgressReporter _progressReporter;
+		private readonly bool _includeOnlineMigrationsDuringOffline;
 
 		private MigrationPlan _migrationPlan;
 
 		public Migrator(
 			IJournal journal, 
 			IMigrationsProvider migrationsProvider, 
-			IProgressReporter progressReporter)
+			IProgressReporter progressReporter,
+			bool includeOnlineMigrationsDuringOffline = false)
 		{
 			_journal = journal;
 			_migrationsProvider = migrationsProvider;
 			_progressReporter = progressReporter;
+			_includeOnlineMigrationsDuringOffline = includeOnlineMigrationsDuringOffline;
 		}
 
 		public void EnsureJournal()
@@ -63,7 +66,6 @@ namespace dotMigrator
 			// the _journal might throw an exception here if it was never created for the target data store
 			var migrationsAlreadyRun = _journal.GetDeployedMigrations();
 
-			//TODO: we should be able to instruct something to treat all online migrations as offline migrations for purposes of checking for a safe migration plan
 			var availableMigrations = _migrationsProvider.GatherMigrations();
 
 			if (availableMigrations.GroupBy(am => am.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
@@ -83,6 +85,7 @@ namespace dotMigrator
 				return Error("Cannot migrate due to migration numbers that are not in order.");
 			}
 
+			bool mustRestartLastMigration = false;
 			for (int i = 0; i < migrationsAlreadyRun.Count; i++)
 			{
 				var deployedMigration = migrationsAlreadyRun[i];
@@ -126,6 +129,7 @@ namespace dotMigrator
 							);
 						}
 						// otherwise it must be an online migration so we are allowed to restart it even if its fingerprint is different
+						mustRestartLastMigration = true;
 					}
 				}
 				else
@@ -138,26 +142,38 @@ namespace dotMigrator
 				}
 			}
 
+			// we'll either take all the migrations after the deployed ones, or we'll take the last migration to restart it plus all the rest.
+			int indexOfFirstMigrationToRun = migrationsAlreadyRun.Count;
+			if (mustRestartLastMigration)
+				indexOfFirstMigrationToRun -= 1;
+			
 			// at this point, we can take the remainder of the available migrations and verify them.
-			var foundOnlineMigration = false;
-			for (int i = migrationsAlreadyRun.Count; i < availableMigrations.Count; i++)
+			if (_includeOnlineMigrationsDuringOffline)
 			{
-				var availableMigration = availableMigrations[i];
-				if (availableMigration.IsOnlineMigration)
+				offlineMigrationsToRun = availableMigrations.Skip(indexOfFirstMigrationToRun).ToList();
+			}
+			else
+			{
+				var foundOnlineMigration = false;
+				for (int i = indexOfFirstMigrationToRun; i < availableMigrations.Count; i++)
 				{
-					foundOnlineMigration = true;
-					onlineMigrationsToRun.Add(availableMigration);
-				}
-				else if (foundOnlineMigration)
-				{
-					// then we found that there is an offline migration that follows at least one online migration therefore this version is undeployable.
-					return Error(
-						"Cannot migrate due to incompatible branch. " +
-						$"Found offline migration ({availableMigration.MigrationNumber}) {availableMigration.Name} that follows an online migration.");
-				}
-				else
-				{
-					offlineMigrationsToRun.Add(availableMigration);
+					var availableMigration = availableMigrations[i];
+					if (availableMigration.IsOnlineMigration)
+					{
+						foundOnlineMigration = true;
+						onlineMigrationsToRun.Add(availableMigration);
+					}
+					else if (foundOnlineMigration)
+					{
+						// then we found that there is an offline migration that follows at least one online migration therefore this version is undeployable.
+						return Error(
+							"Cannot migrate due to incompatible branch. " +
+							$"Found offline migration ({availableMigration.MigrationNumber}) {availableMigration.Name} that follows an online migration.");
+					}
+					else
+					{
+						offlineMigrationsToRun.Add(availableMigration);
+					}
 				}
 			}
 
@@ -193,7 +209,8 @@ namespace dotMigrator
 				throw new Exception(_migrationPlan.OfflineErrorMessage);
 
 			var migrationNumberForStoredObjects = _migrationPlan.LastCompletedMigrationNumber;
-			if (_migrationPlan.HasOfflineMigrations)
+
+			if (_migrationPlan.OfflineMigrations.Any())
 			{
 				_progressReporter.BeginBlock("Running offline migration scripts...");
 				foreach (var migrationToRun in _migrationPlan.OfflineMigrations)
@@ -218,7 +235,6 @@ namespace dotMigrator
 				foreach (var scriptToRun in _migrationPlan.StoredCodeDefinitions)
 				{
 					_progressReporter.Report($"Running {scriptToRun.Name} ...");
-					// we'll always run the script in the prescribed database
 					scriptToRun.Execute(_progressReporter);
 
 					// Record the fact that we ran that script.
@@ -245,7 +261,6 @@ namespace dotMigrator
 				foreach (var migrationToRun in _migrationPlan.OnlineMigrations)
 				{
 					_progressReporter.Report($"Running {migrationToRun.Name} ...");
-					//TODO: handle the special case where we need to resume a previously failed, but now revised online migration.. the journal should be able to handle that on its own
 					_journal.RecordStartMigration(migrationToRun);
 					migrationToRun.Execute(_progressReporter);
 					_journal.RecordCompleteMigration(migrationToRun);

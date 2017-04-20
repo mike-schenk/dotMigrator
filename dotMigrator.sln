@@ -3,7 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
 VisualStudioVersion = 15.0.26403.7
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator", "dotMigrator\dotMigrator.csproj", "{A42A4167-EAA8-4CA3-8F0D-C123922C5D78}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServer2012.SmoScriptRunner", "dotMigrator.SqlServer2012.SmoScriptRunner\dotMigrator.SqlServer2012.SmoScriptRunner.csproj", "{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator", "dotMigrator\dotMigrator.csproj", "{93C85347-5682-4F48-9168-9AD0A5EDC7E3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServerTableJournal", "dotMigrator.SqlServerTableJournal\dotMigrator.SqlServerTableJournal.csproj", "{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{43C20DB6-50E4-4112-9220-FFE0609C1EAC}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -11,10 +17,22 @@ Global
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
-		{A42A4167-EAA8-4CA3-8F0D-C123922C5D78}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{A42A4167-EAA8-4CA3-8F0D-C123922C5D78}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{A42A4167-EAA8-4CA3-8F0D-C123922C5D78}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{A42A4167-EAA8-4CA3-8F0D-C123922C5D78}.Release|Any CPU.Build.0 = Release|Any CPU
+		{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}.Release|Any CPU.Build.0 = Release|Any CPU
+		{93C85347-5682-4F48-9168-9AD0A5EDC7E3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{93C85347-5682-4F48-9168-9AD0A5EDC7E3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{93C85347-5682-4F48-9168-9AD0A5EDC7E3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{93C85347-5682-4F48-9168-9AD0A5EDC7E3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
