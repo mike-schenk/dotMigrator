@@ -4,15 +4,31 @@ namespace dotMigrator
 {
 	public class MigrationPlan
 	{
-		private int _lastMigrationNumber;
-		public bool HasOfflineMigrations { get; }
-		public bool HasStoredCodeChanges { get; }
-		public bool HasOnlineMigrations { get; }
-		public string ErrorMessage { get; }
+		public MigrationPlan(
+			string offlineErrorMessage, 
+			string onlineErrorMessage, 
+			IReadOnlyList<Migration> offlineMigrations, 
+			IReadOnlyList<StoredCodeDefinition> storedCodeDefinitions, 
+			IReadOnlyList<Migration> onlineMigrations, 
+			int lastCompletedMigrationNumber)
+		{
+			OfflineErrorMessage = offlineErrorMessage;
+			OnlineErrorMessage = onlineErrorMessage;
+			OfflineMigrations = offlineMigrations;
+			StoredCodeDefinitions = storedCodeDefinitions;
+			OnlineMigrations = onlineMigrations;
+			LastCompletedMigrationNumber = lastCompletedMigrationNumber;
+		}
+
+		public bool HasOfflineMigrations => OfflineMigrations.Count > 0;
+		public bool HasStoredCodeChanges => StoredCodeDefinitions.Count > 0;
+		public bool HasOnlineMigrations => OnlineMigrations.Count > 0;
+		public string OfflineErrorMessage { get; }
+		public string OnlineErrorMessage { get; }
 
 		internal IReadOnlyList<Migration> OfflineMigrations { get; }
-		internal IReadOnlyList<Migration> OnlineMigrations { get; }
 		internal IReadOnlyList<StoredCodeDefinition> StoredCodeDefinitions { get; }
-		internal int LastMigrationNumber { get; }
+		internal IReadOnlyList<Migration> OnlineMigrations { get; }
+		internal int LastCompletedMigrationNumber { get; }
 	}
 }

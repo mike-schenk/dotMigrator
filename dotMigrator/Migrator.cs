@@ -38,78 +38,134 @@ namespace dotMigrator
 		/// <returns></returns>
 		public MigrationPlan Plan()
 		{
-			if (_migrationPlan != null)
-				return _migrationPlan;
+			return _migrationPlan ?? (_migrationPlan = CreateMigrationPlan());
+		}
 
-			int lastMigrationNumber = 0;
-			bool compatible = true;
+		private MigrationPlan CreateMigrationPlan()
+		{
+			int lastAlreadyCompletedMigrationNumber = 0;
 
-			List<Migration> migrationsToRun = new List<Migration>();
+			List<Migration> offlineMigrationsToRun = new List<Migration>();
+			List<Migration> onlineMigrationsToRun = new List<Migration>();
+			List<StoredCodeDefinition> storedCodeToRun = new List<StoredCodeDefinition>();
 
-			// now compare the scripts that have been run against the scripts we have
+			MigrationPlan Error(string message)
+			{
+				return new MigrationPlan(
+					message, 
+					message, 
+					offlineMigrationsToRun, 
+					storedCodeToRun,
+					onlineMigrationsToRun, 
+					lastAlreadyCompletedMigrationNumber);
+			}
+
+			// the _journal might throw an exception here if it was never created for the target data store
 			var migrationsAlreadyRun = _journal.GetDeployedMigrations();
-			// ask the RevisedScriptsSource for a sequence of available migration scripts
+
+			//TODO: we should be able to instruct something to treat all online migrations as offline migrations for purposes of checking for a safe migration plan
 			var availableMigrations = _migrationsProvider.GatherMigrations();
 
-			using (var deployedEnumerator = migrationsAlreadyRun.GetEnumerator())
-			using (var availableEnumerator = availableMigrations.GetEnumerator())
+			if (availableMigrations.GroupBy(am => am.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
 			{
-				// step through the ordered list of deployed migrations and available migrations in tandem to make sure we can safely run just the "new" available migrations.
-				while (deployedEnumerator.MoveNext())
+				// we have duplicate migration names so we can't do anything
+				return Error("Cannot migrate due to migration names that are not unique.");
+			}
+			if (availableMigrations.GroupBy(am => am.MigrationNumber).Any(g => g.Count() > 1))
+			{
+				// we have duplicate migration numbers so we can't do anything
+				return Error("Cannot migrate due to migration numbers that are not unique.");
+			}
+			var migrationNumbers = availableMigrations.Select(am => am.MigrationNumber).ToArray();
+			if (!migrationNumbers.SequenceEqual(migrationNumbers.OrderBy(v => v)))
+			{
+				// we have migration numbers out-of order so we can't do anything
+				return Error("Cannot migrate due to migration numbers that are not in order.");
+			}
+
+			for (int i = 0; i < migrationsAlreadyRun.Count; i++)
+			{
+				var deployedMigration = migrationsAlreadyRun[i];
+
+				if (i == availableMigrations.Count)
 				{
-					var deployedMigration = deployedEnumerator.Current;
-					lastMigrationNumber = deployedMigration.MigrationNumber;
-
-					// If we have more deployed migrations than we have available migrations, there must be some unknown ones and we can't run.
-					if (!availableEnumerator.MoveNext())
+					// then we've just encountered the first deployed migration that is not known as an available one, so this is an attempt to migrate to an incompatible branch
+					return Error(
+						"Cannot migrate due to incompatible branch. " +
+						$"Deployed migration ({deployedMigration.MigrationNumber}) {deployedMigration.Name} is not known."
+					);
+				}
+				var availableMigration = availableMigrations[i];
+				// if they don't match and this is a complete migration, or is the last migration and is an incomplete offline migration, this is an attempt to migrate to an incompatible branch
+				if (deployedMigration.MigrationNumber == availableMigration.MigrationNumber
+				    && deployedMigration.Name.Equals(availableMigration.Name, StringComparison.OrdinalIgnoreCase))
+				{
+					// now if the migration is complete, the fingerprints must match
+					if (deployedMigration.Complete)
 					{
-						throw new RebuildNeededException($"There are unknown migrations already deployed, starting with {deployedMigration.MigrationNumber}:{deployedMigration.Name}");
+						lastAlreadyCompletedMigrationNumber = deployedMigration.MigrationNumber;
+						if (deployedMigration.Fingerprint != availableMigration.Fingerprint)
+						{
+							// then a completed migration has been modified, so this is an attempt to migrate to an incompatible branch
+							return Error(
+								"Cannot migrate due to incompatible branch. " +
+								$"Deployed migration ({deployedMigration.MigrationNumber}) {deployedMigration.Name} has been modified."
+							);
+						}
+						// otherwise, these migrations match so we'll continue in our loop.
 					}
-					var availableMigration = availableEnumerator.Current;
-
-					// now make sure the pair of migrations match
-					var comparison = Compare(deployedMigration, availableMigration);
-					switch (comparison)
+					else
 					{
-						// There is either an available migration that hasn't been deployed and comes before the end of the deployed ones, 
-						// or there is a deployed one that isn't present in the available ones.
-						case MigrationComparison.Mismatched:
-							throw new RebuildNeededException($"The set of deployed migrations and available migrations don't match, starting with Deployed: {deployedMigration.MigrationNumber}:{deployedMigration.Name} and Available: {availableMigration.MigrationNumber}:{availableMigration.Name}");
-						// A migration is different than it was when it was deployed.
-						case MigrationComparison.Revised:
-							throw new RebuildNeededException($"A migration has been modified since it was last deployed: {deployedMigration.MigrationNumber}:{deployedMigration.Name}");
-						case MigrationComparison.Equal:
-							break;
-					}
-					// if there are any deployed offline migrations that are incomplete, we can't run.
-					if (deployedMigration.Complete == false && availableMigration.IsOnlineMigration == false)
-					{
-						throw new RepairNeededException($"A migration script was not completed on the last run: {deployedMigration.MigrationNumber}:{deployedMigration.Name}");
+						// the deployed migration is incomplete. It must be the last one in the list of deployed migrations.
+						if (availableMigration.IsOnlineMigration == false)
+						{
+							return Error(
+								"Cannot migrate due to incomplete prior offline migration. " +
+								$"Deployed migration ({deployedMigration.MigrationNumber}) {deployedMigration.Name} did not complete. " +
+								"Restore the database from a backup or manually fix the database and mark the migration complete in the journal, or delete it from the journal to have it run the next time."
+							);
+						}
+						// otherwise it must be an online migration so we are allowed to restart it even if its fingerprint is different
 					}
 				}
-				// if the last deployed migration is an incomplete online migration, we can't run any offline migrations
-
-				// If we got this far, everything left over in availableEnumerator needs to be executed.
-				while (availableEnumerator.MoveNext())
+				else
 				{
-					var availableMigration = availableEnumerator.Current;
-					migrationsToRun.Add(availableMigration);
-					lastMigrationNumber = availableMigration.MigrationNumber;
+					// then we just encountered a mismatch between the deployed and available migrations, so this is an attempt to migrate to an incompatible branch
+					return Error(
+						"Cannot migrate due to incompatible branch. " +
+						$"Available migration ({availableMigration.MigrationNumber}) {availableMigration.Name} was found where deployed migration ({deployedMigration.MigrationNumber}) {deployedMigration.Name} was expected."
+					);
 				}
 			}
-			// If there are any duplicate MigrationNumbers among the available migrations, we can't run.
-			if (migrationsToRun.GroupBy(m => m.MigrationNumber).Any(g => g.Count() > 1))
-				throw new CannotMigrateException("There are duplicate migration numbers among the available migrations.");
-			// If there are any duplicate MigrationNames among the available migrations, we can't run.
-			if (migrationsToRun.GroupBy(m => m.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
-				throw new CannotMigrateException("There are duplicate migration names among the available migrations.");
 
+			// at this point, we can take the remainder of the available migrations and verify them.
+			var foundOnlineMigration = false;
+			for (int i = migrationsAlreadyRun.Count; i < availableMigrations.Count; i++)
+			{
+				var availableMigration = availableMigrations[i];
+				if (availableMigration.IsOnlineMigration)
+				{
+					foundOnlineMigration = true;
+					onlineMigrationsToRun.Add(availableMigration);
+				}
+				else if (foundOnlineMigration)
+				{
+					// then we found that there is an offline migration that follows at least one online migration therefore this version is undeployable.
+					return Error(
+						"Cannot migrate due to incompatible branch. " +
+						$"Found offline migration ({availableMigration.MigrationNumber}) {availableMigration.Name} that follows an online migration.");
+				}
+				else
+				{
+					offlineMigrationsToRun.Add(availableMigration);
+				}
+			}
 
 			// determine which repeatable scripts need to run
 			var repeatableScriptsAlreadyRun = _journal.GetDeployedStoredCodeDefinitions().ToDictionary(r => r.Name, StringComparer.OrdinalIgnoreCase);
 			var availableRepeatableScripts = _migrationsProvider.GatherStoredCodeDefinitions();
 			// find the differences
-			var repeatableScriptsToRun = availableRepeatableScripts
+			storedCodeToRun = availableRepeatableScripts
 				.Where(availableScript =>
 				{
 					DeployedStoredCodeDefinition found;
@@ -121,22 +177,22 @@ namespace dotMigrator
 				})
 				.ToList();
 
+			// determine whether online migration is possible
+			var onlineErrorMessage = offlineMigrationsToRun.Count > 1
+				? $"Cannot migrate online due to offline migrations that need to run first: ({offlineMigrationsToRun[0].MigrationNumber}) {offlineMigrationsToRun[0].Name}."
+				: null;
+
+			return new MigrationPlan(null, onlineErrorMessage, offlineMigrationsToRun, storedCodeToRun, onlineMigrationsToRun, lastAlreadyCompletedMigrationNumber);
 		}
 
-		private MigrationComparison Compare(DeployedMigration deployed, Migration available)
-		{
-			if (available.MigrationNumber != deployed.MigrationNumber
-			    || string.Equals(available.Name, deployed.Name, StringComparison.OrdinalIgnoreCase) == false)
-				return MigrationComparison.Mismatched;
-			if (available.Fingerprint != deployed.Fingerprint)
-				return MigrationComparison.Revised;
-			return MigrationComparison.Equal;
-		}
 
 		public void MigrateOffline()
 		{
 			Plan();
+			if (_migrationPlan.OfflineErrorMessage != null)
+				throw new Exception(_migrationPlan.OfflineErrorMessage);
 
+			var migrationNumberForStoredObjects = _migrationPlan.LastCompletedMigrationNumber;
 			if (_migrationPlan.HasOfflineMigrations)
 			{
 				_progressReporter.BeginBlock("Running offline migration scripts...");
@@ -145,6 +201,7 @@ namespace dotMigrator
 					_progressReporter.Report($"Running {migrationToRun.Name} ...");
 					_journal.RecordStartMigration(migrationToRun);
 					migrationToRun.Execute(_progressReporter);
+					migrationNumberForStoredObjects = migrationToRun.MigrationNumber;
 					_journal.RecordCompleteMigration(migrationToRun);
 					_progressReporter.Report("Done.");
 				}
@@ -165,7 +222,7 @@ namespace dotMigrator
 					scriptToRun.Execute(_progressReporter);
 
 					// Record the fact that we ran that script.
-					_journal.RecordStoredCodeDefinition(scriptToRun, _migrationPlan.LastMigrationNumber);
+					_journal.RecordStoredCodeDefinition(scriptToRun, migrationNumberForStoredObjects);
 					_progressReporter.Report("Done.");
 				}
 				_progressReporter.EndBlock("Done.");
@@ -179,6 +236,8 @@ namespace dotMigrator
 		public void MigrateOnline()
 		{
 			Plan();
+			if (_migrationPlan.OnlineErrorMessage != null)
+				throw new Exception(_migrationPlan.OnlineErrorMessage);
 
 			if (_migrationPlan.HasOnlineMigrations)
 			{
@@ -186,6 +245,7 @@ namespace dotMigrator
 				foreach (var migrationToRun in _migrationPlan.OnlineMigrations)
 				{
 					_progressReporter.Report($"Running {migrationToRun.Name} ...");
+					//TODO: handle the special case where we need to resume a previously failed, but now revised online migration.. the journal should be able to handle that on its own
 					_journal.RecordStartMigration(migrationToRun);
 					migrationToRun.Execute(_progressReporter);
 					_journal.RecordCompleteMigration(migrationToRun);
@@ -198,18 +258,5 @@ namespace dotMigrator
 				_progressReporter.Report("No online migration scripts to run.");
 			}
 		}
-	}
-
-	internal enum MigrationComparison
-	{
-		Mismatched,
-		Revised,
-		Equal
-	}
-
-	public interface IMigrationsProvider
-	{
-		IEnumerable<Migration> GatherMigrations();
-		IEnumerable<StoredCodeDefinition> GatherStoredCodeDefinitions();
 	}
 }
