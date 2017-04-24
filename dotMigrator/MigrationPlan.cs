@@ -2,6 +2,9 @@ using System.Collections.Generic;
 
 namespace dotMigrator
 {
+	/// <summary>
+	/// The result of <see cref="Migrator.Plan"/>
+	/// </summary>
 	public class MigrationPlan
 	{
 		public MigrationPlan(

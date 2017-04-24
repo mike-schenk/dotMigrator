@@ -1,6 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.Text;
-using System.Threading.Tasks;
+using System.Linq;
 using dotMigrator;
 using Moq;
 using NUnit.Framework;
@@ -10,8 +9,8 @@ namespace Tests
 	[TestFixture]
 	public class MigratorTests
 	{
-		private readonly Migration _onlineMigration = new Migration(2, "Online Migration", "1234567890", true, pr => { });
 		private readonly Migration _offlineMigration = new Migration(1, "Offline Migration", "1234567890", false, pr => { });
+		private readonly Migration _onlineMigration = new Migration(2, "Online Migration", "1234567890", true, pr => { });
 
 		[Test]
 		public void EnsureJournal_ShouldCallCreateJournal()
@@ -27,13 +26,27 @@ namespace Tests
 		[Test]
 		public void EnsureBaseline_ShouldCallSetBaseline()
 		{
-			var mockJournal = new Mock<IJournal>();
-			var migrationsProvider = new FakeMigrationsProvider();
-			var subject = new Migrator(mockJournal.Object, migrationsProvider, Mock.Of<IProgressReporter>());
+			var journal = new Mock<IJournal>();
+			journal.Setup(j => j.GetDeployedMigrations()).Returns(new List<DeployedMigration>());
+
+			var availableMigrations = new[]
+			{
+				_offlineMigration,
+				_onlineMigration,
+				new Migration(3, "SomeMigration", "0987654321", false, pr => { }),
+				new Migration(4, "Later Migration", "111111111111111", false, pr => { }), 
+			};
+			var migrationsProvider = new FakeMigrationsProvider().WithMigrations(availableMigrations);
+
+			var subject = new Migrator(journal.Object, migrationsProvider, Mock.Of<IProgressReporter>());
 
 			subject.EnsureBaseline("SomeMigration");
 
-			mockJournal.Verify(m => m.SetBaseline("SomeMigration", migrationsProvider), Times.Once);
+			journal.Verify(
+				m => m.SetBaseline(It.Is<IEnumerable<Migration>>(actual => actual.SequenceEqual(availableMigrations.Take(3)))),
+				Times.Once,
+				"the first three migrations should have been sent to the journal"
+			);
 		}
 
 		[Test]
@@ -71,7 +84,6 @@ namespace Tests
 			Assert.That(planResult.OfflineErrorMessage, Is.Not.Null.And.Contains("incomplete prior offline migration."));
 			Assert.That(planResult.OnlineErrorMessage, Is.EqualTo(planResult.OfflineErrorMessage));
 		}
-
 
 		[Test]
 		public void Plan_ShouldNotReturnAnyError_WhenTheLastDeployedMigrationIsAnIncompleteOnlineMigration_AndThereAreNoOfflineMigrationsToRun()

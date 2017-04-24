@@ -85,9 +85,37 @@ namespace dotMigrator
 				.ToList();
 		}
 
-		public IReadOnlyCollection<StoredCodeDefinition> GatherStoredCodeDefinitions()
+		public IReadOnlyList<StoredCodeDefinition> GatherStoredCodeDefinitions()
 		{
-			throw new System.NotImplementedException();
+			MD5 md5 = MD5.Create();
+			var files = Directory.GetFiles(_storedCodeDefinitionsDirectory, _storedCodeDefinitionFileWildcard);
+
+			return files
+				.OrderBy(f => f)
+				.Select(
+					file =>
+					{
+						var filename = Path.GetFileName(file);
+						// extract the name from the filename while ignoring leading digits that are used only for sequencing.
+						string name = "";
+						if (string.IsNullOrEmpty(filename))
+							throw new Exception("Stored Code Definition script needs a filename");
+
+						for (int i = 0; i < filename.Length; i++)
+						{
+							char c = filename[i];
+							if (!Char.IsDigit(c))
+							{
+								name = filename.Substring(i).Trim();
+								break;
+							}
+						}
+
+						var contents = new StreamReader(file, true).ReadToEnd();
+						var hash = BitConverter.ToString(md5.ComputeHash(Encoding.UTF8.GetBytes(contents)));
+						return new StoredCodeDefinition(name, hash, pr => _scriptRunner.Run(contents));
+					}
+				).ToList();
 		}
 	}
 }

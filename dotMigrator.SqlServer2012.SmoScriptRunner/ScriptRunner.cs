@@ -4,26 +4,26 @@ using Microsoft.SqlServer.Management.Smo;
 
 namespace dotMigrator.SqlServer2012.SmoScriptRunner
 {
-    public class ScriptRunner : IScriptRunner
+	public class ScriptRunner : IScriptRunner, IDisposable
 	{
 		private readonly string _serverInstance;
-		private readonly string _deployUserName;
-		private readonly string _deployUserPassword;
+		private readonly string _sqlUserName;
+		private readonly string _sqlUserPassword;
 		private readonly bool _useWindowsIntegratedSecurity;
 		private readonly string _targetDatabaseName;
 		private Database _database;
 		private Server _server;
 
 		public ScriptRunner(
-			string serverInstance, 
-			string targetDatabaseName, 
-			string deployUserName, 
-			string deployUserPassword, 
+			string serverInstance,
+			string targetDatabaseName,
+			string sqlUserName,
+			string sqlUserPassword,
 			bool useWindowsIntegratedSecurity)
 		{
 			_serverInstance = serverInstance;
-			_deployUserName = deployUserName;
-			_deployUserPassword = deployUserPassword;
+			_sqlUserName = sqlUserName;
+			_sqlUserPassword = sqlUserPassword;
 			_useWindowsIntegratedSecurity = useWindowsIntegratedSecurity;
 			_targetDatabaseName = targetDatabaseName;
 		}
@@ -34,7 +34,7 @@ namespace dotMigrator.SqlServer2012.SmoScriptRunner
 			ServerConnection serverConnection =
 				_useWindowsIntegratedSecurity
 					? new ServerConnection(_serverInstance)
-					: new ServerConnection(_serverInstance, _deployUserName, _deployUserPassword);
+					: new ServerConnection(_serverInstance, _sqlUserName, _sqlUserPassword);
 
 			_server = new Server(serverConnection);
 			_server.ConnectionContext.Connect();

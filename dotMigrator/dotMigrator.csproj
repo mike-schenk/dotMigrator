@@ -37,6 +37,7 @@
   <ItemGroup>
     <Compile Include="DeployedMigration.cs" />
     <Compile Include="DeployedStoredCodeDefinition.cs" />
+    <Compile Include="Extensions.cs" />
     <Compile Include="FileSystemScriptsMigrationProvider.cs" />
     <Compile Include="IJournal.cs" />
     <Compile Include="IMigrationsProvider.cs" />

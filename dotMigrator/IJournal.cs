@@ -12,7 +12,7 @@ namespace dotMigrator
 		/// </summary>
 		void CreateJournal();
 
-		void SetBaseline(string lastMigrationToBaseline, IMigrationsProvider migrationsProvider);
+		void SetBaseline(IEnumerable<Migration> baselineMigrations);
 
 
 		/// <summary>
@@ -21,7 +21,7 @@ namespace dotMigrator
 		/// </summary>
 		/// <param name="migrationToRun"></param>
 		void RecordStartMigration(Migration migrationToRun);
-		void RecordCompleteMigration(Migration migrationToRun);
+		void RecordCompleteMigration(Migration migration);
 		void RecordStoredCodeDefinition(StoredCodeDefinition storedCodeDefinition, int lastMigrationNumber);
 		/// <summary>
 		/// Returns the sequenced list of offline and online migrations that have been recorded in the journal

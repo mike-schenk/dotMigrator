@@ -4,6 +4,10 @@ using System.Linq;
 
 namespace dotMigrator
 {
+	/// <summary>
+	/// The main entrypoint class to dotMigrator.
+	/// Each instance of this class can be used to Plan and apply a set of migrations once.
+	/// </summary>
 	public class Migrator
 	{
 		private readonly IJournal _journal;
@@ -12,6 +16,8 @@ namespace dotMigrator
 		private readonly bool _includeOnlineMigrationsDuringOffline;
 
 		private MigrationPlan _migrationPlan;
+		private IReadOnlyList<DeployedMigration> _deployedMigrations;
+		private IReadOnlyList<Migration> _availableMigrations;
 
 		public Migrator(
 			IJournal journal, 
@@ -25,23 +31,121 @@ namespace dotMigrator
 			_includeOnlineMigrationsDuringOffline = includeOnlineMigrationsDuringOffline;
 		}
 
+		/// <summary>
+		/// Instructs the journal to prepare its storage space if needed.
+		/// </summary>
 		public void EnsureJournal()
 		{
 			_journal.CreateJournal();
 		}
 
-		public void EnsureBaseline(string migrationName)
+		/// <summary>
+		/// Populates the journal with the migrations that have already been applied 
+		/// to the target database before dotMigrator was in use.
+		/// </summary>
+		/// <param name="baselineMigrationName"></param>
+		public void EnsureBaseline(string baselineMigrationName)
 		{
-			_journal.SetBaseline(migrationName, _migrationsProvider);
+			var deployedMigrations = GetDeployedMigrations();
+			if (deployedMigrations.Count == 0)
+			{
+				var baselineMigrations =
+					GetAvailableMigrations()
+						.TakeUntil(m => m.Name.Equals(baselineMigrationName, StringComparison.OrdinalIgnoreCase));
+				_journal.SetBaseline(baselineMigrations);
+			}
+			/* otherwise, the subset of available migrations up to the baselineMigrationName must 
+			 * match the first deployed migrations.. but that will be checked when calling Plan()
+			 */
 		}
 
 		/// <summary>
-		/// Determines if the target data store is compatible with the migrations, and if so, which of them need to run to bring it up-to-date
+		/// Determines if the target data store is compatible with the migrations, and 
+		/// if so, which of them need to run to bring it up-to-date
 		/// </summary>
 		/// <returns></returns>
 		public MigrationPlan Plan()
 		{
 			return _migrationPlan ?? (_migrationPlan = CreateMigrationPlan());
+		}
+
+		/// <summary>
+		/// Applies all of the necessary offline migrations followed by the 
+		/// changed stored code definitions
+		/// </summary>
+		public void MigrateOffline()
+		{
+			Plan();
+			if (_migrationPlan.OfflineErrorMessage != null)
+				throw new Exception(_migrationPlan.OfflineErrorMessage);
+
+			var migrationNumberForStoredObjects = _migrationPlan.LastCompletedMigrationNumber;
+
+			if (_migrationPlan.OfflineMigrations.Any())
+			{
+				_progressReporter.BeginBlock("Running offline migration scripts...");
+				foreach (var migrationToRun in _migrationPlan.OfflineMigrations)
+				{
+					_progressReporter.Report($"Running {migrationToRun.Name} ...");
+					_journal.RecordStartMigration(migrationToRun);
+					migrationToRun.Execute(_progressReporter);
+					migrationNumberForStoredObjects = migrationToRun.MigrationNumber;
+					_journal.RecordCompleteMigration(migrationToRun);
+					_progressReporter.Report("Done.");
+				}
+				_progressReporter.EndBlock("Done.");
+			}
+			else
+			{
+				_progressReporter.Report("No offline migrations to run.");
+			}
+
+			if (_migrationPlan.HasStoredCodeChanges)
+			{
+				_progressReporter.BeginBlock("Running stored code definitions...");
+				foreach (var scriptToRun in _migrationPlan.StoredCodeDefinitions)
+				{
+					_progressReporter.Report($"Running {scriptToRun.Name} ...");
+					scriptToRun.Execute(_progressReporter);
+
+					// Record the fact that we ran that script.
+					_journal.RecordStoredCodeDefinition(scriptToRun, migrationNumberForStoredObjects);
+					_progressReporter.Report("Done.");
+				}
+				_progressReporter.EndBlock("Done.");
+			}
+			else
+			{
+				_progressReporter.Report("No stored code definitions to update.");
+			}
+		}
+
+		/// <summary>
+		/// Applies all of the necessary online migrations
+		/// </summary>
+		public void MigrateOnline()
+		{
+			Plan();
+			if (_migrationPlan.OnlineErrorMessage != null)
+				throw new Exception(_migrationPlan.OnlineErrorMessage);
+
+			if (_migrationPlan.HasOnlineMigrations)
+			{
+				_progressReporter.BeginBlock("Running online migration scripts...");
+				foreach (var migrationToRun in _migrationPlan.OnlineMigrations)
+				{
+					_progressReporter.Report($"Running {migrationToRun.Name} ...");
+					_journal.RecordStartMigration(migrationToRun);
+					migrationToRun.Execute(_progressReporter);
+					_journal.RecordCompleteMigration(migrationToRun);
+					_progressReporter.Report("Done.");
+				}
+				_progressReporter.EndBlock("Done.");
+			}
+			else
+			{
+				_progressReporter.Report("No online migration scripts to run.");
+			}
 		}
 
 		private MigrationPlan CreateMigrationPlan()
@@ -64,9 +168,9 @@ namespace dotMigrator
 			}
 
 			// the _journal might throw an exception here if it was never created for the target data store
-			var migrationsAlreadyRun = _journal.GetDeployedMigrations();
+			var migrationsAlreadyRun = GetDeployedMigrations();
 
-			var availableMigrations = _migrationsProvider.GatherMigrations();
+			var availableMigrations = GetAvailableMigrations();
 
 			if (availableMigrations.GroupBy(am => am.Name, StringComparer.OrdinalIgnoreCase).Any(g => g.Count() > 1))
 			{
@@ -201,77 +305,16 @@ namespace dotMigrator
 			return new MigrationPlan(null, onlineErrorMessage, offlineMigrationsToRun, storedCodeToRun, onlineMigrationsToRun, lastAlreadyCompletedMigrationNumber);
 		}
 
-
-		public void MigrateOffline()
+		private IReadOnlyList<DeployedMigration> GetDeployedMigrations()
 		{
-			Plan();
-			if (_migrationPlan.OfflineErrorMessage != null)
-				throw new Exception(_migrationPlan.OfflineErrorMessage);
-
-			var migrationNumberForStoredObjects = _migrationPlan.LastCompletedMigrationNumber;
-
-			if (_migrationPlan.OfflineMigrations.Any())
-			{
-				_progressReporter.BeginBlock("Running offline migration scripts...");
-				foreach (var migrationToRun in _migrationPlan.OfflineMigrations)
-				{
-					_progressReporter.Report($"Running {migrationToRun.Name} ...");
-					_journal.RecordStartMigration(migrationToRun);
-					migrationToRun.Execute(_progressReporter);
-					migrationNumberForStoredObjects = migrationToRun.MigrationNumber;
-					_journal.RecordCompleteMigration(migrationToRun);
-					_progressReporter.Report("Done.");
-				}
-				_progressReporter.EndBlock("Done.");
-			}
-			else
-			{
-				_progressReporter.Report("No offline migrations to run.");
-			}
-
-			if (_migrationPlan.HasStoredCodeChanges)
-			{
-				_progressReporter.BeginBlock("Running stored code definitions...");
-				foreach (var scriptToRun in _migrationPlan.StoredCodeDefinitions)
-				{
-					_progressReporter.Report($"Running {scriptToRun.Name} ...");
-					scriptToRun.Execute(_progressReporter);
-
-					// Record the fact that we ran that script.
-					_journal.RecordStoredCodeDefinition(scriptToRun, migrationNumberForStoredObjects);
-					_progressReporter.Report("Done.");
-				}
-				_progressReporter.EndBlock("Done.");
-			}
-			else
-			{
-				_progressReporter.Report("No stored code definitions to update.");
-			}
+			_deployedMigrations = _deployedMigrations ?? _journal.GetDeployedMigrations();
+			return _deployedMigrations;
 		}
 
-		public void MigrateOnline()
+		private IReadOnlyList<Migration> GetAvailableMigrations()
 		{
-			Plan();
-			if (_migrationPlan.OnlineErrorMessage != null)
-				throw new Exception(_migrationPlan.OnlineErrorMessage);
-
-			if (_migrationPlan.HasOnlineMigrations)
-			{
-				_progressReporter.BeginBlock("Running online migration scripts...");
-				foreach (var migrationToRun in _migrationPlan.OnlineMigrations)
-				{
-					_progressReporter.Report($"Running {migrationToRun.Name} ...");
-					_journal.RecordStartMigration(migrationToRun);
-					migrationToRun.Execute(_progressReporter);
-					_journal.RecordCompleteMigration(migrationToRun);
-					_progressReporter.Report("Done.");
-				}
-				_progressReporter.EndBlock("Done.");
-			}
-			else
-			{
-				_progressReporter.Report("No online migration scripts to run.");
-			}
+			_availableMigrations = _availableMigrations ?? _migrationsProvider.GatherMigrations();
+			return _availableMigrations;
 		}
 	}
 }

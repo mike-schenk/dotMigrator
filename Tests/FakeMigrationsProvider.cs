@@ -28,7 +28,7 @@ namespace Tests
 			return _migrations;
 		}
 
-		public IReadOnlyCollection<StoredCodeDefinition> GatherStoredCodeDefinitions()
+		public IReadOnlyList<StoredCodeDefinition> GatherStoredCodeDefinitions()
 		{
 			return new ReadOnlyCollection<StoredCodeDefinition>(_storedCodeDefinitions);
 		}

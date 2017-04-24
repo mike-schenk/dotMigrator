@@ -7,7 +7,7 @@ namespace Tests
 {
 	public class FakeJournal : IJournal
 	{
-		private List<DeployedMigration> _migrations = new List<DeployedMigration>();
+		private Dictionary<string,DeployedMigration> _migrations = new Dictionary<string,DeployedMigration>(StringComparer.OrdinalIgnoreCase);
 		private List<DeployedStoredCodeDefinition> _storedCodeDefinitions = new List<DeployedStoredCodeDefinition>();
 
 		public bool IsCreated { get; private set; }
@@ -21,7 +21,7 @@ namespace Tests
 		public FakeJournal WithMigrations(IEnumerable<DeployedMigration> migrations)
 		{
 			Created();
-			_migrations = migrations.ToList();
+			_migrations = migrations.ToDictionary(m => m.Name);
 			return this;
 		}
 
@@ -37,34 +37,32 @@ namespace Tests
 			IsCreated = true;
 		}
 
-		public void SetBaseline(string lastMigrationToBaseline, IMigrationsProvider migrationsProvider)
+		public void SetBaseline(IEnumerable<Migration> baselineMigrations)
 		{
-			if (_migrations.Any())
-				return;
-
-			_migrations = migrationsProvider.GatherMigrations()
-				.TakeUntil(m => !m.Name.Equals(lastMigrationToBaseline, StringComparison.OrdinalIgnoreCase))
-				.Select(m => new DeployedMigration(m.MigrationNumber, m.Name, m.Fingerprint, true))
-				.ToList();
+			CreateJournal();
+			foreach (var migration in baselineMigrations)
+			{
+				_migrations.Add(migration.Name, new DeployedMigration(migration.MigrationNumber, migration.Name, migration.Fingerprint, true));
+			}
 		}
 
 		public void RecordStartMigration(Migration migrationToRun)
 		{
-			// either update the last deployed migration when the name matches, or append it to the end of the list
+			// either update the migration whose name matches, or append it
 			var newMigration = new DeployedMigration(migrationToRun.MigrationNumber, migrationToRun.Name, migrationToRun.Fingerprint, false);
-			if(_migrations.Count > 0 && _migrations[_migrations.Count - 1].Name.Equals(migrationToRun.Name, StringComparison.OrdinalIgnoreCase))
+			if(_migrations.ContainsKey(newMigration.Name))
 			{
-				_migrations[_migrations.Count-1] = newMigration;
+				_migrations[newMigration.Name] = newMigration;
 			}
 			else
 			{
-				_migrations.Add(newMigration);
+				_migrations.Add(newMigration.Name, newMigration);
 			}
 		}
 
-		public void RecordCompleteMigration(Migration migrationToRun)
+		public void RecordCompleteMigration(Migration migration)
 		{
-			_migrations[_migrations.Count - 1] = new DeployedMigration(migrationToRun.MigrationNumber, migrationToRun.Name, migrationToRun.Fingerprint, true);
+			_migrations[migration.Name] = new DeployedMigration(migration.MigrationNumber, migration.Name, migration.Fingerprint, true);
 		}
 
 		public void RecordStoredCodeDefinition(StoredCodeDefinition storedCodeDefinition, int lastMigrationNumber)
@@ -83,7 +81,7 @@ namespace Tests
 		{
 			if(!IsCreated)
 				throw new Exception("Journal not created");
-			return _migrations;
+			return _migrations.Values.OrderBy(m => m.MigrationNumber).ToList();
 		}
 
 		public IReadOnlyList<DeployedStoredCodeDefinition> GetDeployedStoredCodeDefinitions()
