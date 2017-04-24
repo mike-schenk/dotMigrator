@@ -24,7 +24,7 @@ namespace Tests
 		}
 
 		[Test]
-		public void EnsureBaseline_ShouldCallSetBaseline()
+		public void EnsureBaseline_ShouldCallCreateJournalAndSetBaseline()
 		{
 			var journal = new Mock<IJournal>();
 			journal.Setup(j => j.GetDeployedMigrations()).Returns(new List<DeployedMigration>());
@@ -42,8 +42,11 @@ namespace Tests
 
 			subject.EnsureBaseline("SomeMigration");
 
+			journal.Verify(j => j.CreateJournal(),
+				Times.Once);
+
 			journal.Verify(
-				m => m.SetBaseline(It.Is<IEnumerable<Migration>>(actual => actual.SequenceEqual(availableMigrations.Take(3)))),
+				j => j.SetBaseline(It.Is<IEnumerable<Migration>>(actual => actual.SequenceEqual(availableMigrations.Take(3)))),
 				Times.Once,
 				"the first three migrations should have been sent to the journal"
 			);

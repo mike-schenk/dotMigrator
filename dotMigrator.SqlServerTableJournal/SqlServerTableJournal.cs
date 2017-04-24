@@ -5,7 +5,7 @@ using System.Data.SqlClient;
 
 namespace dotMigrator.SqlServerTableJournal
 {
-	public class SqlServerTableJournal : IJournal
+	public class SqlServerTableJournal : IJournal, IDisposable
 	{
 		private readonly string _serverInstance;
 		private readonly string _targetDatabaseName;
@@ -215,6 +215,15 @@ namespace dotMigrator.SqlServerTableJournal
 				}
 			}
 			return toReturn;
+		}
+
+		public void Dispose()
+		{
+			_connection?.Dispose();
+			_selectCommand?.Dispose();
+			_insertCommand?.Dispose();
+			_upsertCommand?.Dispose();
+			_setCompleteCommand?.Dispose();
 		}
 	}
 }

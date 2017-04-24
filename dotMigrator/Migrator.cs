@@ -46,6 +46,8 @@ namespace dotMigrator
 		/// <param name="baselineMigrationName"></param>
 		public void EnsureBaseline(string baselineMigrationName)
 		{
+			EnsureJournal();
+
 			var deployedMigrations = GetDeployedMigrations();
 			if (deployedMigrations.Count == 0)
 			{
