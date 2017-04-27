@@ -2,6 +2,9 @@ using System.Collections.Generic;
 
 namespace dotMigrator
 {
+	/// <summary>
+	/// The interface for classes that gather all known migrations and stored code definitions that might need to be applied during a deployment
+	/// </summary>
 	public interface IMigrationsProvider
 	{
 		/// <summary>

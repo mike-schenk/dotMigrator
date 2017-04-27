@@ -2,16 +2,16 @@
 using System.Collections.Generic;
 using System.Data;
 using System.Data.SqlClient;
+using System.Linq;
 
-namespace dotMigrator.SqlServerTableJournal
+namespace dotMigrator.SqlServer
 {
-	public class SqlServerTableJournal : IJournal, IDisposable
+	/// <summary>
+	/// Holds the journal for both migrations and stored code definitions in a single table
+	/// </summary>
+	public class SingleTableJournal : IJournal, IDisposable
 	{
-		private readonly string _serverInstance;
-		private readonly string _targetDatabaseName;
-		private readonly string _sqlUserName;
-		private readonly string _sqlUserPassword;
-		private readonly bool _useWindowsIntegratedSecurity;
+		private readonly ConnectionProperties _connectionProperties;
 		private readonly IProgressReporter _progressReporter;
 
 		private SqlConnection _connection;
@@ -20,39 +20,28 @@ namespace dotMigrator.SqlServerTableJournal
 		private SqlCommand _upsertCommand;
 		private SqlCommand _setCompleteCommand;
 
-		public SqlServerTableJournal(
-			string serverInstance,
-			string targetDatabaseName,
-			string sqlUserName,
-			string sqlUserPassword,
-			bool useWindowsIntegratedSecurity,
+		/// <summary>
+		/// Constructs the journal object which will use the supplied connection properties and holds the progressReporter without connecting to the database
+		/// </summary>
+		/// <param name="connectionProperties"></param>
+		/// <param name="progressReporter"></param>
+		public SingleTableJournal(
+			ConnectionProperties connectionProperties,
 			IProgressReporter progressReporter)
 		{
-			_serverInstance = serverInstance;
-			_sqlUserName = sqlUserName;
-			_sqlUserPassword = sqlUserPassword;
-			_useWindowsIntegratedSecurity = useWindowsIntegratedSecurity;
+			_connectionProperties = connectionProperties;
 			_progressReporter = progressReporter;
-			_targetDatabaseName = targetDatabaseName;
 		}
 
+		/// <summary>
+		/// Connects to the target database and prepares to read and write from the journal table "_DeployedScripts"
+		/// </summary>
 		public void Open()
 		{
 			if (_connection != null)
 				return;
-			// open our Sql connection and look for the _DeployedScripts table
-			var connectionBuilder = new SqlConnectionStringBuilder { DataSource = _serverInstance, ApplicationName = "dotMigrator", InitialCatalog = _targetDatabaseName };
-			if (_useWindowsIntegratedSecurity)
-			{
-				connectionBuilder.IntegratedSecurity = true;
-			}
-			else
-			{
-				connectionBuilder.UserID = _sqlUserName;
-				connectionBuilder.Password = _sqlUserPassword;
-			}
-			_connection = new SqlConnection(connectionBuilder.ConnectionString);
-			_connection.Open();
+
+			_connection = _connectionProperties.OpenConnection();
 
 			_selectCommand = _connection.CreateCommand();
 			_selectCommand.CommandText =
@@ -107,6 +96,9 @@ namespace dotMigrator.SqlServerTableJournal
 			_setCompleteCommand.Parameters.Add("@CompletedTs", SqlDbType.DateTime2);
 		}
 
+		/// <summary>
+		/// Ensures the journal table "[dbo].[_DeployedScripts]" is present in the target database, creating it if necessary.
+		/// </summary>
 		public void CreateJournal()
 		{
 			var findTableCommand = new SqlCommand("SELECT OBJECT_ID('_DeployedScripts')", _connection);
@@ -124,16 +116,24 @@ namespace dotMigrator.SqlServerTableJournal
 )",
 					_connection);
 
-				_progressReporter.Report($"Preparing database \"{_targetDatabaseName}\" for future deployments...");
+				_progressReporter.Report($"Preparing database \"{_connectionProperties.TargetDatabaseName}\" for future deployments...");
 				createTableCommand.ExecuteNonQuery();
 				_progressReporter.Report("Done");
 			}
 		}
 
-		public void SetBaseline(IEnumerable<Migration> baselineMigrations)
+		/// <summary>
+		/// Records that a series of migrations has already been completed in a target data store.
+		/// This is used when an existing data store is being put under management by dotMigrator
+		/// </summary>
+		/// <param name="baselineMigrations"></param>
+		/// <returns></returns>
+		public IReadOnlyList<DeployedMigration> SetBaseline(IEnumerable<Migration> baselineMigrations)
 		{
 			// first we'll call CreateJournal to ensure the table is already set up.
 			CreateJournal();
+
+			var toReturn = new List<DeployedMigration>();
 
 			foreach (var migration in baselineMigrations)
 			{
@@ -145,9 +145,16 @@ namespace dotMigrator.SqlServerTableJournal
 				_insertCommand.Parameters["@CompletedTs"].Value = DateTime.Now;
 				_insertCommand.Parameters["@Fingerprint"].Value = migration.Fingerprint;
 				_insertCommand.ExecuteNonQuery();
+				toReturn.Add(new DeployedMigration(migration.MigrationNumber, migration.Name, migration.Fingerprint, true));
 			}
+			return toReturn.OrderBy(m => m.MigrationNumber).ToList();
 		}
 
+		/// <summary>
+		/// Insert or update the migration identified by its name in the journal.
+		/// It will be recorded as an incomplete migration.
+		/// </summary>
+		/// <param name="migration"></param>
 		public void RecordStartMigration(Migration migration)
 		{
 			// insert or update the fingerprint of a migration.
@@ -160,6 +167,11 @@ namespace dotMigrator.SqlServerTableJournal
 			_upsertCommand.ExecuteNonQuery();
 		}
 
+		/// <summary>
+		/// Update the identified migration in the journal as having been completed.
+		/// It can be assumed that this will only be called for the most recently started mgiration.
+		/// </summary>
+		/// <param name="migration"></param>
 		public void RecordCompleteMigration(Migration migration)
 		{
 			_setCompleteCommand.Parameters["@Name"].Value = migration.Name;
@@ -167,6 +179,13 @@ namespace dotMigrator.SqlServerTableJournal
 			_setCompleteCommand.ExecuteNonQuery();
 		}
 
+		/// <summary>
+		/// Insert a record to the journal that a new stored code definition has been completely applied, 
+		/// or update an existing record with the new fingerprint of a stored code definition that has 
+		/// just been applied.
+		/// </summary>
+		/// <param name="storedCodeDefinition"></param>
+		/// <param name="lastMigrationNumber"></param>
 		public void RecordStoredCodeDefinition(StoredCodeDefinition storedCodeDefinition, int lastMigrationNumber)
 		{
 			// insert or update the fingerprint of a stored code definition.
@@ -179,6 +198,9 @@ namespace dotMigrator.SqlServerTableJournal
 			_upsertCommand.ExecuteNonQuery();
 		}
 
+		/// <summary>
+		/// Returns the sequenced list of offline and online migrations that have been recorded in the journal
+		/// </summary>
 		public IReadOnlyList<DeployedMigration> GetDeployedMigrations()
 		{
 			var toReturn = new List<DeployedMigration>();
@@ -198,6 +220,12 @@ namespace dotMigrator.SqlServerTableJournal
 			return toReturn;
 		}
 
+		/// <summary>
+		/// Returns all of the stored code definitions that have been previously applied as recorded in this journal.
+		/// The order of the definitions does not matter since the names are used to match them up with the available ones
+		/// that the MigrationsProvider finds.
+		/// </summary>
+		/// <returns></returns>
 		public IReadOnlyList<DeployedStoredCodeDefinition> GetDeployedStoredCodeDefinitions()
 		{
 			var toReturn = new List<DeployedStoredCodeDefinition>();
@@ -217,9 +245,13 @@ namespace dotMigrator.SqlServerTableJournal
 			return toReturn;
 		}
 
+		/// <summary>
+		/// Close the connection to the database
+		/// </summary>
 		public void Dispose()
 		{
 			_connection?.Dispose();
+			_connection = null;
 			_selectCommand?.Dispose();
 			_insertCommand?.Dispose();
 			_upsertCommand?.Dispose();

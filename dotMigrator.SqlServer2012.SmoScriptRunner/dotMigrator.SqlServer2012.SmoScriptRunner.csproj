@@ -56,10 +56,15 @@
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\dotMigrator.SqlServer\dotMigrator.SqlServer.csproj">
+      <Project>{bee4497e-6bdf-4a8f-a8a5-d3ccc0f2f74b}</Project>
+      <Name>dotMigrator.SqlServer</Name>
+    </ProjectReference>
     <ProjectReference Include="..\dotMigrator\dotMigrator.csproj">
       <Project>{93c85347-5682-4f48-9168-9ad0a5edc7e3}</Project>
       <Name>dotMigrator</Name>
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
+  <Import Project="$(MSBuildProjectDirectory)\..\dotMigrator.targets" />
 </Project>

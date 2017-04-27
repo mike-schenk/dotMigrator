@@ -37,13 +37,15 @@ namespace Tests
 			IsCreated = true;
 		}
 
-		public void SetBaseline(IEnumerable<Migration> baselineMigrations)
+		public IReadOnlyList<DeployedMigration> SetBaseline(IEnumerable<Migration> baselineMigrations)
 		{
 			CreateJournal();
 			foreach (var migration in baselineMigrations)
 			{
-				_migrations.Add(migration.Name, new DeployedMigration(migration.MigrationNumber, migration.Name, migration.Fingerprint, true));
+				var deployedMigration = new DeployedMigration(migration.MigrationNumber, migration.Name, migration.Fingerprint, true);
+				_migrations.Add(migration.Name, deployedMigration);
 			}
+			return _migrations.Values.OrderBy(m => m.MigrationNumber).ToList();
 		}
 
 		public void RecordStartMigration(Migration migrationToRun)

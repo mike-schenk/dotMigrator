@@ -7,7 +7,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServer2012.S
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator", "dotMigrator\dotMigrator.csproj", "{93C85347-5682-4F48-9168-9AD0A5EDC7E3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServerTableJournal", "dotMigrator.SqlServerTableJournal\dotMigrator.SqlServerTableJournal.csproj", "{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServer", "dotMigrator.SqlServer\dotMigrator.SqlServer.csproj", "{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{43C20DB6-50E4-4112-9220-FFE0609C1EAC}"
 EndProject

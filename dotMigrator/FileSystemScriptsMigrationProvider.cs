@@ -7,6 +7,10 @@ using System.Text;
 
 namespace dotMigrator
 {
+	/// <summary>
+	/// Reads text scripts from folders in the filesystem. Migrations from one path and stored code definitions from another.
+	/// Fingerprints are the MD5 hash of the UTF-8 encoding of the textual content of the files even if the files are actually stored in another encoding.
+	/// </summary>
 	public class FileSystemScriptsMigrationProvider : IMigrationsProvider
 	{
 		private readonly string _migrationsDirectory;
@@ -15,6 +19,14 @@ namespace dotMigrator
 		private readonly string _storedCodeDefinitionFileWildcard;
 		private readonly IScriptRunner _scriptRunner;
 
+		/// <summary>
+		/// Construct a FileSystemScriptsMigrationProvider using the given directories and glob patterns. 
+		/// </summary>
+		/// <param name="migrationsDirectory">The directory containing migration scripts</param>
+		/// <param name="migrationsFileWildcard">The filename pattern to identify migration scripts in the directory</param>
+		/// <param name="storedCodeDefinitionsDirectory">The directory containing stored code definition scripts</param>
+		/// <param name="storedCodeDefinitionFileWildcard">The filename pattern to identify the stored code definition scripts in the directory</param>
+		/// <param name="scriptRunner">The script runner that has the ability to execute the text of the scripts for the target data store</param>
 		public FileSystemScriptsMigrationProvider(
 			string migrationsDirectory, 
 			string migrationsFileWildcard, 
@@ -29,6 +41,11 @@ namespace dotMigrator
 			_scriptRunner = scriptRunner;
 		}
 
+		/// <summary>
+		/// Returns all of the known migrations in order by migration number by extracting the migration number from the digits in the beginning of the filename
+		/// Online migrations are identified by the string "online " following the migration number.
+		/// </summary>
+		/// <returns></returns>
 		public IReadOnlyList<Migration> GatherMigrations()
 		{
 			MD5 md5 = MD5.Create();
@@ -85,13 +102,18 @@ namespace dotMigrator
 				.ToList();
 		}
 
+		/// <summary>
+		/// Returns all of the known stored code definitions in the order in which they should be applied to the target data store.
+		/// Any digits from the front of the filename are used as the dependency level which deteremines the order in which they should be applied.
+		/// Those digits are not included in the name stored in the journal so that an object's dependency level can change without changing which object the file represents.
+		/// </summary>
+		/// <returns></returns>
 		public IReadOnlyList<StoredCodeDefinition> GatherStoredCodeDefinitions()
 		{
 			MD5 md5 = MD5.Create();
 			var files = Directory.GetFiles(_storedCodeDefinitionsDirectory, _storedCodeDefinitionFileWildcard);
 
 			return files
-				.OrderBy(f => f)
 				.Select(
 					file =>
 					{
@@ -101,21 +123,33 @@ namespace dotMigrator
 						if (string.IsNullOrEmpty(filename))
 							throw new Exception("Stored Code Definition script needs a filename");
 
+						var digits = new Stack<char>(filename.Length);
 						for (int i = 0; i < filename.Length; i++)
 						{
 							char c = filename[i];
-							if (!Char.IsDigit(c))
+
+							if (Char.IsDigit(c))
+								digits.Push(c);
+							else
 							{
 								name = filename.Substring(i).Trim();
 								break;
 							}
 						}
+						int dependencyLevel = 0;
+						for (int placeValue = 1; digits.Count > 0; placeValue *= 10)
+						{
+							int digitValue = digits.Pop() - '0';
+							dependencyLevel += digitValue * placeValue;
+						}
 
 						var contents = new StreamReader(file, true).ReadToEnd();
 						var hash = BitConverter.ToString(md5.ComputeHash(Encoding.UTF8.GetBytes(contents)));
-						return new StoredCodeDefinition(name, hash, pr => _scriptRunner.Run(contents));
+						return new StoredCodeDefinition(name, hash, pr => _scriptRunner.Run(contents), dependencyLevel);
 					}
-				).ToList();
+				)
+				.OrderBy(c => c.DependencyLevel)
+				.ToList();
 		}
 	}
 }

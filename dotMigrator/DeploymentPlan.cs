@@ -5,9 +5,9 @@ namespace dotMigrator
 	/// <summary>
 	/// The result of <see cref="Migrator.Plan"/>
 	/// </summary>
-	public class MigrationPlan
+	public class DeploymentPlan
 	{
-		public MigrationPlan(
+		internal DeploymentPlan(
 			string offlineErrorMessage, 
 			string onlineErrorMessage, 
 			IReadOnlyList<Migration> offlineMigrations, 
@@ -23,10 +23,29 @@ namespace dotMigrator
 			LastCompletedMigrationNumber = lastCompletedMigrationNumber;
 		}
 
+		/// <summary>
+		/// Whether the plan includes offline migrations
+		/// </summary>
 		public bool HasOfflineMigrations => OfflineMigrations.Count > 0;
+
+		/// <summary>
+		/// Whether the plan includes stored code changes
+		/// </summary>
 		public bool HasStoredCodeChanges => StoredCodeDefinitions.Count > 0;
+
+		/// <summary>
+		/// Whether the plan includes online migrations
+		/// </summary>
 		public bool HasOnlineMigrations => OnlineMigrations.Count > 0;
+
+		/// <summary>
+		/// If dotMigrator cannot perform an offline deployment, this contains the error message
+		/// </summary>
 		public string OfflineErrorMessage { get; }
+
+		/// <summary>
+		/// If dotMigrator cannot perform an online deployment, this contains the error message
+		/// </summary>
 		public string OnlineErrorMessage { get; }
 
 		internal IReadOnlyList<Migration> OfflineMigrations { get; }
