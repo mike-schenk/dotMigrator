@@ -88,8 +88,8 @@ namespace dotMigrator.SqlServer
 			_setCompleteCommand = _connection.CreateCommand();
 			_setCompleteCommand.CommandType = CommandType.Text;
 			_setCompleteCommand.CommandText =
-				"UPDATE _DeployedScripts " +
-				"  Complete = 1 " +
+				"UPDATE _DeployedScripts SET" +
+				"  Complete = 1, " +
 				"  CompletedTs = @CompletedTs " +
 				"WHERE Name = @Name";
 			_setCompleteCommand.Parameters.Add("@Name", SqlDbType.NVarChar, 260);
