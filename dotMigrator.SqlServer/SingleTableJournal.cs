@@ -162,7 +162,7 @@ namespace dotMigrator.SqlServer
 			_upsertCommand.Parameters["@Name"].Value = migration.Name;
 			_upsertCommand.Parameters["@Repeatable"].Value = false;
 			_upsertCommand.Parameters["@Complete"].Value = false;
-			_upsertCommand.Parameters["@CompletedTs"].Value = DateTime.Now;
+			_upsertCommand.Parameters["@CompletedTs"].Value = DBNull.Value;
 			_upsertCommand.Parameters["@Fingerprint"].Value = migration.Fingerprint;
 			_upsertCommand.ExecuteNonQuery();
 		}

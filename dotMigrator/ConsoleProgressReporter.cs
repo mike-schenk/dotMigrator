@@ -22,9 +22,6 @@ namespace dotMigrator
 
 		public void EndBlock(string name)
 		{
-			Console.Write(new string(' ', _blockNames.Count * 3));
-			Console.WriteLine("End " + name);
-
 			//now we pop the block stack until we find the block we're looking for
 			var undo = new Stack<string>();
 			while (_blockNames.Count > 0)
@@ -36,6 +33,9 @@ namespace dotMigrator
 			// if we didn't find a matching block name, put all of them back
 			while(undo.Count > 0)
 				_blockNames.Push(undo.Pop());
+
+			Console.Write(new string(' ', _blockNames.Count * 3));
+			Console.WriteLine("End " + name);
 		}
 	}
 
