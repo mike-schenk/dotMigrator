@@ -11,4 +11,13 @@ namespace dotMigrator
 		/// <param name="scriptContents"></param>
 		void Run(string scriptContents);
 	}
+
+    public interface IScriptFileRunner
+    {
+        /// <summary>
+        /// Runs the identified script in the target data store
+        /// </summary>
+        /// <param name="absoluteScriptFileName">The full file path of the script to run</param>
+        void Run(string absoluteScriptFileName);
+    }
 }

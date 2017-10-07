@@ -17,7 +17,8 @@ namespace dotMigrator
 		private readonly string _migrationsFileWildcard;
 		private readonly string _storedCodeDefinitionsDirectory;
 		private readonly string _storedCodeDefinitionFileWildcard;
-		private readonly IScriptRunner _scriptRunner;
+	    private delegate Action<IProgressReporter> RunActionBuilderFunc(string filePath, string scriptContents);
+	    private readonly RunActionBuilderFunc _runActionBuilder;
 
 		/// <summary>
 		/// Construct a FileSystemScriptsMigrationProvider using the given directories and glob patterns. 
@@ -38,15 +39,45 @@ namespace dotMigrator
 			_migrationsFileWildcard = migrationsFileWildcard;
 			_storedCodeDefinitionsDirectory = storedCodeDefinitionsDirectory;
 			_storedCodeDefinitionFileWildcard = storedCodeDefinitionFileWildcard;
-			_scriptRunner = scriptRunner;
+
+		    _runActionBuilder = (string filePath, string fileContents) =>
+		    {
+		        return pr => scriptRunner.Run(fileContents);
+		    };
 		}
 
-		/// <summary>
-		/// Returns all of the known migrations in order by migration number by extracting the migration number from the digits in the beginning of the filename
-		/// Online migrations are identified by the string "online " following the migration number.
-		/// </summary>
-		/// <returns></returns>
-		public IReadOnlyList<Migration> GatherMigrations()
+        /// <summary>
+        /// Construct a FileSystemScriptsMigrationProvider using the given directories and glob patterns. 
+        /// </summary>
+        /// <param name="migrationsDirectory">The directory containing migration scripts</param>
+        /// <param name="migrationsFileWildcard">The filename pattern to identify migration scripts in the directory</param>
+        /// <param name="storedCodeDefinitionsDirectory">The directory containing stored code definition scripts</param>
+        /// <param name="storedCodeDefinitionFileWildcard">The filename pattern to identify the stored code definition scripts in the directory</param>
+        /// <param name="scriptFileRunner">The script runner that has the ability to execute the script files for the target data store</param>
+        public FileSystemScriptsMigrationProvider(
+	        string migrationsDirectory,
+	        string migrationsFileWildcard,
+	        string storedCodeDefinitionsDirectory,
+	        string storedCodeDefinitionFileWildcard,
+	        IScriptFileRunner scriptFileRunner)
+	    {
+	        _migrationsDirectory = migrationsDirectory;
+	        _migrationsFileWildcard = migrationsFileWildcard;
+	        _storedCodeDefinitionsDirectory = storedCodeDefinitionsDirectory;
+	        _storedCodeDefinitionFileWildcard = storedCodeDefinitionFileWildcard;
+
+	        _runActionBuilder = (string filePath, string fileContents) =>
+	        {
+	            return pr => scriptFileRunner.Run(filePath);
+	        };
+	    }
+
+        /// <summary>
+        /// Returns all of the known migrations in order by migration number by extracting the migration number from the digits in the beginning of the filename
+        /// Online migrations are identified by the string "online " following the migration number.
+        /// </summary>
+        /// <returns></returns>
+        public IReadOnlyList<Migration> GatherMigrations()
 		{
 			MD5 md5 = MD5.Create();
 			var files = Directory.GetFiles(_migrationsDirectory, _migrationsFileWildcard);
@@ -93,7 +124,7 @@ namespace dotMigrator
 								var contents = streamReader.ReadToEnd();
 								var hash = BitConverter.ToString(md5.ComputeHash(Encoding.UTF8.GetBytes(contents)));
 
-								return new Migration(migrationNumber, name.ToString(), hash, isOnline, pr => _scriptRunner.Run(contents));
+								return new Migration(migrationNumber, name.ToString(), hash, isOnline, _runActionBuilder(file, contents));
 							}
 						}
 					}
@@ -145,7 +176,7 @@ namespace dotMigrator
 
 						var contents = new StreamReader(file, true).ReadToEnd();
 						var hash = BitConverter.ToString(md5.ComputeHash(Encoding.UTF8.GetBytes(contents)));
-						return new StoredCodeDefinition(name, hash, pr => _scriptRunner.Run(contents), dependencyLevel);
+						return new StoredCodeDefinition(name, hash, _runActionBuilder(file, contents), dependencyLevel);
 					}
 				)
 				.OrderBy(c => c.DependencyLevel)

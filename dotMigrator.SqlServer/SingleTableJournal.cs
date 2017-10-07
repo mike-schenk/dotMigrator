@@ -11,10 +11,14 @@ namespace dotMigrator.SqlServer
 	/// </summary>
 	public class SingleTableJournal : IJournal, IDisposable
 	{
-		private readonly ConnectionProperties _connectionProperties;
+	    private const string DefaultTableName = "_dotMigratorJournal";
+	    private const string DefaultSchema = "dbo";
+	    private readonly ConnectionProperties _connectionProperties;
 		private readonly IProgressReporter _progressReporter;
+	    private readonly string _journalTableName;
+	    private readonly string _journalTableSchema;
 
-		private SqlConnection _connection;
+	    private SqlConnection _connection;
 		private SqlCommand _selectCommand;
 		private SqlCommand _insertCommand;
 		private SqlCommand _upsertCommand;
@@ -27,16 +31,28 @@ namespace dotMigrator.SqlServer
 		/// <param name="progressReporter"></param>
 		public SingleTableJournal(
 			ConnectionProperties connectionProperties,
-			IProgressReporter progressReporter)
+			IProgressReporter progressReporter) :
+            this(connectionProperties, progressReporter, DefaultTableName, DefaultSchema)
 		{
-			_connectionProperties = connectionProperties;
-			_progressReporter = progressReporter;
 		}
 
-		/// <summary>
-		/// Connects to the target database and prepares to read and write from the journal table "_DeployedScripts"
-		/// </summary>
-		public void Open()
+	    public SingleTableJournal(
+	        ConnectionProperties connectionProperties,
+	        IProgressReporter progressReporter,
+	        string journalTableName = DefaultTableName,
+	        string journalTableSchema = DefaultSchema)
+	    {
+	        _connectionProperties = connectionProperties;
+	        _progressReporter = progressReporter;
+            //TODO: probably verify that the schema and table names will end up being legal after substituting into [{}].[{}]
+	        _journalTableName = journalTableName;
+	        _journalTableSchema = journalTableSchema;
+	    }
+
+        /// <summary>
+        /// Connects to the target database and prepares to read and write from the journal table.
+        /// </summary>
+        public void Open()
 		{
 			if (_connection != null)
 				return;
@@ -46,7 +62,7 @@ namespace dotMigrator.SqlServer
 			_selectCommand = _connection.CreateCommand();
 			_selectCommand.CommandText =
 				"SELECT MigrationNumber, Name, Complete, Fingerprint " +
-				"FROM _DeployedScripts " +
+				$"FROM [{_journalTableSchema}].[{_journalTableName}] " +
 				"WHERE Repeatable = @Repeatable " +
 				"ORDER BY MigrationNumber";
 			_selectCommand.Parameters.Add("@Repeatable", SqlDbType.Bit);
@@ -54,7 +70,7 @@ namespace dotMigrator.SqlServer
 			_insertCommand = _connection.CreateCommand();
 			_insertCommand.CommandType = CommandType.Text;
 			_insertCommand.CommandText =
-				"INSERT INTO _DeployedScripts (MigrationNumber, Name, Repeatable, Complete, CompletedTs, Fingerprint) " +
+                $"INSERT INTO [{_journalTableSchema}].[{_journalTableName}] (MigrationNumber, Name, Repeatable, Complete, CompletedTs, Fingerprint) " +
 				"VALUES (@MigrationNumber, @Name, @Repeatable, @Complete, @CompletedTs, @Fingerprint)";
 			_insertCommand.Parameters.Add("@MigrationNumber", SqlDbType.Int);
 			_insertCommand.Parameters.Add("@Name", SqlDbType.NVarChar, 260);
@@ -66,7 +82,7 @@ namespace dotMigrator.SqlServer
 			_upsertCommand = _connection.CreateCommand();
 			_upsertCommand.CommandType = CommandType.Text;
 			_upsertCommand.CommandText =
-				"UPDATE _DeployedScripts " +
+                $"UPDATE [{_journalTableSchema}].[{_journalTableName}] " +
 				"SET " +
 				"	MigrationNumber = @MigrationNumber, " +
 				" Complete = @Complete, " +
@@ -75,7 +91,7 @@ namespace dotMigrator.SqlServer
 				"WHERE Name = @Name " +
 				"IF @@ROWCOUNT = 0 " +
 				"BEGIN " +
-				"	INSERT INTO _DeployedScripts (MigrationNumber, Name, Repeatable, Complete, CompletedTs, Fingerprint) " +
+                $"	INSERT INTO [{_journalTableSchema}].[{_journalTableName}] (MigrationNumber, Name, Repeatable, Complete, CompletedTs, Fingerprint) " +
 				" VALUES(@MigrationNumber, @Name, @Repeatable, @Complete, @CompletedTs, @Fingerprint) " +
 				"END";
 			_upsertCommand.Parameters.Add("@MigrationNumber", SqlDbType.Int);
@@ -88,7 +104,7 @@ namespace dotMigrator.SqlServer
 			_setCompleteCommand = _connection.CreateCommand();
 			_setCompleteCommand.CommandType = CommandType.Text;
 			_setCompleteCommand.CommandText =
-				"UPDATE _DeployedScripts SET" +
+                $"UPDATE [{_journalTableSchema}].[{_journalTableName}] SET" +
 				"  Complete = 1, " +
 				"  CompletedTs = @CompletedTs " +
 				"WHERE Name = @Name";
@@ -97,16 +113,16 @@ namespace dotMigrator.SqlServer
 		}
 
 		/// <summary>
-		/// Ensures the journal table "[dbo].[_DeployedScripts]" is present in the target database, creating it if necessary.
+		/// Ensures the journal table is present in the target database, creating it if necessary.
 		/// </summary>
 		public void CreateJournal()
 		{
-			var findTableCommand = new SqlCommand("SELECT OBJECT_ID('_DeployedScripts')", _connection);
+			var findTableCommand = new SqlCommand($"SELECT OBJECT_ID('[{_journalTableSchema}].[{_journalTableName}]')", _connection);
 			if (findTableCommand.ExecuteScalar() == DBNull.Value)
 			{
 				// then we need to create it.
 				var createTableCommand = new SqlCommand(
-					@"CREATE TABLE [dbo].[_DeployedScripts](
+                    $@"CREATE TABLE [{_journalTableSchema}].[{_journalTableName}](
 	[MigrationNumber] int NOT NULL, 
 	[Name] [nvarchar](260) NOT NULL PRIMARY KEY, 
 	[Repeatable] bit NOT NULL, 

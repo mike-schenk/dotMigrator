@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio 15
-VisualStudioVersion = 15.0.26403.7
+VisualStudioVersion = 15.0.26730.16
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServer2012.SmoScriptRunner", "dotMigrator.SqlServer2012.SmoScriptRunner\dotMigrator.SqlServer2012.SmoScriptRunner.csproj", "{33A71DC3-6230-4F43-9A76-6DCA155E7CCA}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "dotMigrator.SqlServer", "dotMigrator.SqlServer\dotMigrator.SqlServer.csproj", "{BEE4497E-6BDF-4A8F-A8A5-D3CCC0F2F74B}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests", "Tests\Tests.csproj", "{43C20DB6-50E4-4112-9220-FFE0609C1EAC}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Tests.SqlServer", "Tests.SqlServer\Tests.SqlServer.csproj", "{B39C9E33-80DC-43BD-BEC5-F13A03FC3514}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,8 +35,15 @@ Global
 		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{43C20DB6-50E4-4112-9220-FFE0609C1EAC}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B39C9E33-80DC-43BD-BEC5-F13A03FC3514}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B39C9E33-80DC-43BD-BEC5-F13A03FC3514}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B39C9E33-80DC-43BD-BEC5-F13A03FC3514}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B39C9E33-80DC-43BD-BEC5-F13A03FC3514}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {65EF551D-EC82-47A5-AE99-7F9AE87E9E04}
 	EndGlobalSection
 EndGlobal
