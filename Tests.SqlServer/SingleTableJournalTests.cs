@@ -35,6 +35,9 @@ namespace Tests.SqlServer
 
                 //sut.RecordStartMigration();
             }
+
+            // when the test passes, we'll drop the DB
+            SqlTest.DropDb(localConnectionProperties);
         }
     }
 }
